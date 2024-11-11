@@ -7,13 +7,15 @@ import matplotlib.pyplot as plt
 # global constants
 NATIONALITIES = ("USA", "UK", "Canada", "Australia", "India", "Germany", "France", "Italy", "Japan", "China")
 GENDERS = ("Male", "Female", "Other")
-ROOM_TYPES = ("Single", "Suite")
+ROOM_TYPES = ("Standard", "Deluxe", "Superior")
 SPECIALISATIONS = ("Ski", "Showboard")
-EQUIPMENT_CATEGORIES = ("Ski", "Snowboard", "Helmet", "Poles")
+EQUIPMENT_CATEGORIES = ("Ski", "Snowboard", "Helmet", "Boots")
 EQUIPMENT_SIZE = ("S", "M", "L", "XL")
 PAYMENT_METHODS = ("Credit Card", "Debit Card", "Paypal")
 LESSON_LEVELS = ("Beginner", "Intermediate", "Advanced")
-BASE = 200
+ROOM_PRICES = {"Standard": 60, "Deluxe": 100, "Superior": 120}
+EQUIPMENT_PRICES = {"Ski": 10, "Snowboard": 10, "Helmet": 20, "Boots": 20}
+LESSON_PRICES = {"Beginner": 30, "Intermediate": 40, "Advanced": 50}
 
 # faker instance
 fake = faker.Faker()
@@ -39,7 +41,7 @@ class User:
         self.gender = np.random.choice(GENDERS)
         
     def make_booking(self, date, facility):
-        booking = Booking(user_id = self.id, check_in_date = date, facility=facility)
+        booking = Booking(user_id = self.id, check_in_date = date, facility=facility, rich_user=True if np.random.rand() <= 0.2 else False)
         facility.bookings.append(booking)
         transaction = Transaction(user_id = self.id, facility=facility, booking = booking, transaction_date = date)
         facility.transactions.append(transaction)
@@ -69,8 +71,10 @@ class Room:
     def __init__(self):
         self.id = fake.uuid4()
         self.type = np.random.choice(ROOM_TYPES)
-        self.capacity = 1 if self.type == "Single" else np.random.randint(2, 3)
-        self.price_per_night = np.random.randint(8000, 15000)/100
+        
+        # price per night based on the room capacity
+        self.price_per_night = ROOM_PRICES[self.type]
+        
         self.description = fake.paragraph()
         
 
@@ -91,7 +95,8 @@ class Equipment:
         self.brand = fake.company()
         self.model = fake.word()
         self.size = np.random.choice(EQUIPMENT_SIZE)
-        self.price_per_hour = np.random.randint(500, 1000)/100
+        # price per hour based on the equipment category
+        self.price_per_hour = EQUIPMENT_PRICES[self.category]
 
 
 class Facility:
@@ -128,7 +133,7 @@ class Facility:
         room_ids = [booking.room_id for booking in self.bookings if booking.check_in_date <= date <= booking.check_out_date]
         
         # return all rooms that are not booked on the given date
-        return [room for room in self.rooms if room.id not in room_ids]
+        return sorted([room for room in self.rooms if room.id not in room_ids], key=lambda x: x.price_per_night)
     
     def get_booking_price(self, booking):
         # get the booking price for the given booking
@@ -144,7 +149,7 @@ class Facility:
 
     
 class Booking:
-    def __init__(self, user_id, check_in_date, facility):
+    def __init__(self, user_id, check_in_date, facility, rich_user=False):
         self.id = fake.uuid4()
         self.user_id = user_id
         self.check_in_date = check_in_date
@@ -154,7 +159,11 @@ class Booking:
         
         # assign random room from the rooms available on the check-in date
         available_rooms = facility.rooms_available(check_in_date)
-        room = np.random.choice(available_rooms)
+        if rich_user:
+            room = available_rooms[-1]
+        else:
+            room = available_rooms[0]
+            
         self.room_id = room.id
         
         # booking price is calculated based on the room price and the duration of stay
@@ -213,7 +222,8 @@ class Lesson:
         
         self.lesson_level = np.random.choice(LESSON_LEVELS)
         self.duration_hours = np.random.randint(1, 3)
-        self.lesson_price = np.random.randint(1000, 5000)/100
+        
+        self.lesson_price = LESSON_PRICES[self.lesson_level]*self.duration_hours
     
 
 class Population:
@@ -302,11 +312,11 @@ class Simulation:
         
 
 if __name__ == "__main__":
-    START_DATE = datetime(2022, 7, 1)
+    START_DATE = datetime(2023, 7, 1)
     END_DATE = datetime(2024, 11, 1)
     
     sim = Simulation()
     
     sim.run(start_date=START_DATE, end_date=END_DATE)
     
-    #TODO: rewrite prices generation since they're distributed uniformly atm
+    #TODO: create more cheap rooms and less expensive rooms
