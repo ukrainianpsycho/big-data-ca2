@@ -384,3 +384,4 @@ if __name__ == "__main__":
     sim = Simulation()
     
     sim.run(start_date=START_DATE, end_date=END_DATE)
+    sim.save_dataframes()
