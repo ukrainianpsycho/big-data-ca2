@@ -3,6 +3,8 @@ import numpy as np
 from datetime import datetime, timedelta
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
+import random
 
 # global constants
 NATIONALITIES = ("USA", "UK", "Canada", "Australia", "India", "Germany", "France", "Italy", "Japan", "China")
@@ -68,9 +70,9 @@ class User:
     
    
 class Room:
-    def __init__(self):
+    def __init__(self, room_type="Standard"):
         self.id = fake.uuid4()
-        self.type = np.random.choice(ROOM_TYPES)
+        self.type = room_type
         
         # price per night based on the room capacity
         self.price_per_night = ROOM_PRICES[self.type]
@@ -100,13 +102,24 @@ class Equipment:
 
 
 class Facility:
-    INSTRUCTOR_COUNT = 150
-    ROOM_COUNT = 1500
-    EQUIPMENT_COUNT = 300
+    INSTRUCTOR_COUNT = 100
+    ROOM_COUNT = 500
+    EQUIPMENT_COUNT = 400
     
     def __init__(self):
         self.instructors = [Instructor() for _ in range(Facility.INSTRUCTOR_COUNT)]
-        self.rooms = [Room() for _ in range(Facility.ROOM_COUNT)]
+        
+        # create more standard rooms and less expensive rooms
+        # standard room number is 60% of total rooms
+        # deluxe room number is 30% of total rooms
+        # superior room number is 10% of total rooms
+        standard_rooms = int(Facility.ROOM_COUNT * 0.6)
+        deluxe_rooms = int(Facility.ROOM_COUNT * 0.3)
+        superior_rooms = Facility.ROOM_COUNT - standard_rooms - deluxe_rooms
+        self.rooms = [Room(room_type="Standard") for _ in range(standard_rooms)]
+        self.rooms += [Room(room_type="Deluxe") for _ in range(deluxe_rooms)]
+        self.rooms += [Room(room_type="Superior") for _ in range(superior_rooms)]
+        
         self.equipments = [Equipment() for _ in range(Facility.EQUIPMENT_COUNT)]
         
         self.bookings = []
@@ -270,6 +283,45 @@ class Population:
         # iterate over each user and simulate their behaviour
         for user in users:
             user.act(date, facility)
+
+class Weather:
+    def __init__(self, date):
+        self.date = date
+        month = date.month
+        # Simulate snowfall (in cm)
+        if month in [12, 1, 2]:  # Winter months
+            self.snowfall = random.uniform(0, 50)
+        elif month in [3, 4, 11]:  # Early spring and late fall
+            self.snowfall = random.uniform(0, 20)
+        else:
+            self.snowfall = 0
+
+        # Simulate temperature (in Celsius)
+        if month in [12, 1, 2]:
+            self.temperature = random.uniform(-20, 0)
+        elif month in [3, 4, 11]:
+            self.temperature = random.uniform(-5, 10)
+        elif month in [5, 6, 9, 10]:
+            self.temperature = random.uniform(5, 15)
+        else:
+            self.temperature = random.uniform(10, 25)
+        
+        # Simulate visibility (in km)
+        if self.snowfall > 20:
+            self.visibility = random.uniform(0.1, 1)
+        elif self.snowfall > 0:
+            self.visibility = random.uniform(1, 5)
+        else:
+            self.visibility = random.uniform(5, 20)
+        
+        
+class WeatherHistory:
+    def __init__(self, start_date, end_date):
+        self.history = []
+        current = start_date
+        while current <= end_date:
+            self.history.append(Weather(current))
+            current += timedelta(days=1)
         
         
 class Simulation:    
@@ -281,14 +333,20 @@ class Simulation:
         if start_date is None or end_date is None:
             start_date = datetime.now()
             end_date = start_date + timedelta(days=365)
+            
+        # create weather history for the simulation period
+        self.weather_history = WeatherHistory(start_date, end_date)
         
         # iterate over dates within the simulation period 
+        # each day, the amount of users making bookings increases by a very small
+        # amount to simulate business growth, so that annual increase
+        # in the amount of users is 10
         current_date = start_date
         user_number_increment = 0
         while current_date <= end_date:
             self.population.make_bookings(current_date, user_number_increment, self.facility)
             current_date += timedelta(days=1)
-            
+            user_number_increment += 10/365
         
         # iterate over booking dates
         current_date = start_date
@@ -306,17 +364,23 @@ class Simulation:
             "instructors": pd.DataFrame([vars(instructor) for instructor in self.facility.instructors]),
             "equipment": pd.DataFrame([vars(equipment) for equipment in self.facility.equipments]),
             "rentals": pd.DataFrame([vars(rental) for rental in self.facility.rentals]),
-            "lessons": pd.DataFrame([vars(lesson) for lesson in self.facility.lessons])
+            "lessons": pd.DataFrame([vars(lesson) for lesson in self.facility.lessons]),
+            "weather": pd.DataFrame([vars(weather) for weather in self.weather_history.history])
         }
         return result
+    
+    def save_dataframes(self, dir="csv_data"):
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+        dataframes = self.dataframes()
+        for name, df in dataframes.items():
+            df.to_csv(f"{dir}/{name}.csv", index=False)
         
 
 if __name__ == "__main__":
-    START_DATE = datetime(2023, 7, 1)
+    START_DATE = datetime(2020, 7, 1)
     END_DATE = datetime(2024, 11, 1)
     
     sim = Simulation()
     
     sim.run(start_date=START_DATE, end_date=END_DATE)
-    
-    #TODO: create more cheap rooms and less expensive rooms
