@@ -40,20 +40,20 @@ class User:
         
     def make_booking(self, date, facility):
         booking = Booking(user_id = self.id, check_in_date = date, facility=facility)
-        transaction = Transaction(user_id = self.id, booking_id = booking.id, transaction_date = date)
         facility.bookings.append(booking)
+        transaction = Transaction(user_id = self.id, facility=facility, booking = booking, transaction_date = date)
         facility.transactions.append(transaction)
         
     def rent_equipment(self, date, facility):
         rental = Rental(user_id = self.id, rental_date = date, facility=facility)
-        transaction = Transaction(user_id = self.id, rental_id = rental.id, transaction_date = date)
         facility.rentals.append(rental)
+        transaction = Transaction(user_id = self.id, facility=facility, rental = rental, transaction_date = date)
         facility.transactions.append(transaction)
         
     def take_lesson(self, date, facility):
         lesson = Lesson(user_id = self.id, lesson_date = date, facility=facility)
-        transaction = Transaction(user_id = self.id, lesson_id = lesson.id, transaction_date = date)
         facility.lessons.append(lesson)
+        transaction = Transaction(user_id = self.id, facility=facility, lesson = lesson, transaction_date = date)
         facility.transactions.append(transaction)
         
     def act(self, date, facility):
@@ -130,6 +130,18 @@ class Facility:
         # return all rooms that are not booked on the given date
         return [room for room in self.rooms if room.id not in room_ids]
     
+    def get_booking_price(self, booking):
+        # get the booking price for the given booking
+        return booking.booking_price
+    
+    def get_rental_price(self, rental):
+        # get the rental price for the given rental
+        return rental.rental_price
+    
+    def get_lesson_price(self, lesson):
+        # get the lesson price for the given lesson
+        return lesson.lesson_price
+
     
 class Booking:
     def __init__(self, user_id, check_in_date, facility):
@@ -142,23 +154,32 @@ class Booking:
         
         # assign random room from the rooms available on the check-in date
         available_rooms = facility.rooms_available(check_in_date)
-        self.room_id = np.random.choice(available_rooms).id
+        room = np.random.choice(available_rooms)
+        self.room_id = room.id
+        
+        # booking price is calculated based on the room price and the duration of stay
+        self.booking_price = room.price_per_night * (self.check_out_date - self.check_in_date).days
         
 
 class Transaction:
-    def __init__(self, user_id, rental_id=None, lesson_id=None, booking_id=None, transaction_date=None):
+    def __init__(self, user_id, facility, rental=None, lesson=None, booking=None, transaction_date=None):
         self.id = fake.uuid4()
         self.user_id = user_id
-        self.rental_id = rental_id
-        self.lesson_id = lesson_id
-        self.booking_id = booking_id
+        self.rental_id = rental.id if rental is not None else None
+        self.lesson_id = lesson.id if lesson is not None else None
+        self.booking_id = booking.id if booking is not None else None
         
         # if it's a booking transaction, then the transaction date is
         # several days earlier than the date provided
-        self.transaction_date = transaction_date if booking_id is None else transaction_date - timedelta(days=np.random.randint(3, 30))
+        self.transaction_date = transaction_date if booking is None else transaction_date - timedelta(days=np.random.randint(3, 30))
         
         #TODO transaction amount
-        self.amount = None
+        if booking is not None:
+            self.transaction_amount = facility.get_booking_price(booking)
+        if rental is not None:
+            self.transaction_amount = facility.get_rental_price(rental)
+        if lesson is not None:
+            self.transaction_amount = facility.get_lesson_price(lesson)
         
         self.payment_method = np.random.choice(PAYMENT_METHODS)
     
@@ -171,13 +192,16 @@ class Rental:
         
         # assign random equipment from the available equipment
         available_equipment = facility.equipment_available(rental_date)
-        self.equipment_id = np.random.choice(available_equipment).id
+        equipment = np.random.choice(available_equipment)
+        self.equipment_id = equipment.id
         
         # rental duration is a random number (normally distributed)
         self.duration_hours = int(normal_cropped(4, 1, 1, 8))
         
-    
-    
+        # rental price is calculated based on the equipment price and the duration of rental
+        self.rental_price = equipment.price_per_hour * self.duration_hours
+        
+        
 class Lesson:
     def __init__(self, user_id, lesson_date, facility):
         self.id = fake.uuid4()
@@ -254,7 +278,6 @@ class Simulation:
         while current_date <= end_date:
             self.population.make_bookings(current_date, user_number_increment, self.facility)
             current_date += timedelta(days=1)
-            #user_number_increment += 0.2
             
         
         # iterate over booking dates
@@ -285,6 +308,5 @@ if __name__ == "__main__":
     sim = Simulation()
     
     sim.run(start_date=START_DATE, end_date=END_DATE)
-    
     
     #TODO: rewrite prices generation since they're distributed uniformly atm
